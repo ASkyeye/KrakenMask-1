@@ -1,5 +1,11 @@
 # KrakenMask
 
+Update 2.1 :
+
+- New advanced evasion method on CONTEXT.RIP with gadgets never used before, credit goes to me
+
+Update 2.0 :
+
 Sleep mask using APC with gadget-based evasion to bypass current detection methods.
 
 It’s possible to detect a VirtualProtect call using APC if it returns to NtTestAlert. In this sleep mask, the return address of VirtualProtect is the address of a  ```call NtTestAlert``` gadget.
